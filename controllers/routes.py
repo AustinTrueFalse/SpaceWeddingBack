@@ -1,16 +1,37 @@
 from flask import Blueprint, request, jsonify, current_app, g
-from .guest_controller import add_guest, get_guests, get_drinks, get_visit_sts
-from .event_controller import add_event, get_events, get_event_by_id, delete_event, update_event, get_event_designs
+from .guest_controller import add_guest, add_guest_auth, update_guest, delete_guest, get_guests, get_drinks, get_visit_sts
+from .event_controller import add_event, update_todo, get_events, get_event_by_id, delete_event, update_event, get_event_designs
 from auth.utils import authenticate_request
 
 guest_routes = Blueprint('guests', __name__)
 event_routes = Blueprint('events', __name__)
+
+# Маршрут для добавления гостя c проверкой юзера
+@guest_routes.route('/api/guests/add_auth', methods=['POST'])
+@authenticate_request
+def add_guest_auth_route():
+    db = current_app.db  # Получаем объект db из текущего приложения
+    return add_guest_auth(request.json, db)  # Передаем db как аргумент
 
 # Маршрут для добавления гостя
 @guest_routes.route('/api/guests/add', methods=['POST'])
 def add_guest_route():
     db = current_app.db  # Получаем объект db из текущего приложения
     return add_guest(request.json, db)  # Передаем db как аргумент
+
+# Маршрут для обновления гостя
+@guest_routes.route('/api/guests/update', methods=['POST'])
+@authenticate_request
+def update_guest_route():
+    db = current_app.db  # Получаем объект db из текущего приложения
+    return update_guest(request.json, db)  # Передаем db как аргумент
+
+# Маршрут для удаления гостя
+@guest_routes.route('/api/guests/delete', methods=['POST'])
+@authenticate_request
+def delete_guest_route():
+    db = current_app.db  # Получаем объект db из текущего приложения
+    return delete_guest(request.json, db)  # Передаем db как аргумент
 
 # Маршрут для получения списка гостей
 @guest_routes.route('/api/guests/list', methods=['POST'])
@@ -40,6 +61,14 @@ def add_event_route():
     if not hasattr(g, 'user'):
         return jsonify({"error": "User not authenticated"}), 401
     return add_event(request.json, db)  # Передаем db как аргумент
+
+# Маршрут для добавления todo
+@event_routes.route('/api/events/update_todo', methods=['POST'])
+@authenticate_request
+def update_todo_route():
+    db = current_app.db  # Получаем объект db из текущего приложения
+    return update_todo(request.json, db)  # Передаем db как аргумент
+
 
 # Маршрут для получения списка events
 @event_routes.route('/api/events/list', methods=['POST'])

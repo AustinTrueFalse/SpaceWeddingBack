@@ -1,248 +1,230 @@
 from flask import jsonify, request, g
 from pydantic import ValidationError
 from models.event import EventCreate, EventUpdate
+from models.todo import Todo
 from services.exception_handler import default_error_response, validation_error_response
 from services.response_handler import default_response
 from datetime import datetime
+from services.validation import validate_user, validate_event, validate_permission, validate_guest_phone
 
+# Основная логика добавления события
 def add_event(data, db):
     try:
-        # Получаем userId из контекста (декодированного токена)
         user_id = g.user.get("uid")
+        # Валидация пользователя
+        user_error = validate_user(user_id, db)
+        if user_error:
+            return user_error
 
-        if not user_id:
-            return default_error_response("User ID not found", 400)
-
-        # Проверяем, существует ли пользователь в коллекции users
         user_doc = db.collection('users').document(user_id).get()
-        if not user_doc.exists:
-            return default_error_response("User not found in Firestore", 404)
-
-        # Добавляем userId (из Firestore, который равен UID Firebase) в данные события
+        user_data = user_doc.to_dict()
         data['userId'] = user_id
-
-        # Добавляем текущую дату и время для created
+        allowed_users = [{
+            "id": user_id,
+            "username": user_data.get("username"),
+            "email": user_data.get("email"),
+        }]
+        data['allowedUsers'] = allowed_users
         data['created'] = datetime.utcnow()
 
-        # Валидация данных с использованием модели Pydantic
         event_data = EventCreate(**data)
-
-        # Добавление документа в коллекцию "events"
         db.collection('events').add(event_data.dict())
 
-        # Возвращаем успешный ответ
         return default_response({"message": "Event added successfully"}, 200)
 
     except ValidationError as e:
-        print("Ошибка валидации при попытке добавить event:", e)
         return validation_error_response(str(e.errors()), 400)
 
     except Exception as e:
-        print("Ошибка при попытке добавить event")
         return default_error_response(str(e), 500)
 
-def get_events(data, db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
+# Основная логика получения событий
+def get_events(data, db):
     try:
-        # Получаем userId из контекста (декодированного токена)
         user_id = g.user.get("uid")
+        # Валидация пользователя
+        user_error = validate_user(user_id, db)
+        if user_error:
+            return user_error
 
-        if not user_id:
-            return default_error_response("User ID not found", 400)
-
-        # Проверяем, существует ли пользователь в коллекции users
-        user_doc = db.collection('users').document(user_id).get()
-        if not user_doc.exists:
-            return default_error_response("User not found in Firestore", 404)
-
-         # Получаем все события, принадлежащие текущему пользователю
         events_ref = db.collection('events')
-        events_query = events_ref.where("userId", "==", user_id)  # Фильтруем события по userId
-        docs = events_query.stream()
+        docs = events_ref.stream()
 
         events = []
-        # Проходим по всем отфильтрованным документам и добавляем их в список
         for doc in docs:
-            event_data = doc.to_dict()  # Получаем данные документа как словарь
-            event_data["id"] = doc.id  # Добавляем id документа в данные ивента
+            event_data = doc.to_dict()
+            event_data["id"] = doc.id
+            allowed_users = event_data.get("allowedUsers", [])
+            if any(user.get("id") == user_id for user in allowed_users):
+                guest_ids = event_data.get("guests", [])
+                guests = []
+                for guest_id in guest_ids:
+                    guest_doc = db.collection("guests").document(guest_id).get()
+                    if guest_doc.exists:
+                        guest_data = guest_doc.to_dict()
+                        guest_data["id"] = guest_doc.id
+                        guests.append(guest_data)
+                event_data["guests"] = guests
+                events.append(event_data)
 
-            guest_ids = event_data.get("guests", [])
-
-            guests = []
-
-            for guest_id in guest_ids:
-                guest_doc = db.collection("guests").document(guest_id).get()
-                if guest_doc.exists:
-                    guest_data = guest_doc.to_dict()
-                    guest_data["id"] = guest_doc.id  # Добавляем id напитка
-                    guests.append(guest_data)  # Добавляем полную информацию о напитке
-
-            event_data["guests"] = guests
-            events.append(event_data)  # Добавляем данные ивента в список
-
-        # Возвращаем список пользователей как JSON
-        return jsonify(events), 200
+        if events:
+            return jsonify(events), 200
+        else:
+            return default_error_response("No events found for the user", 404)
 
     except Exception as e:
-        print("Ошибка при попытке получить events:", e)
         return default_error_response(str(e), 500)
 
-def get_event_by_id(data, db):  
+
+
+def get_event_by_id(data, db):
     try:
-        # Получаем eventId из переданных данных
         event_id = data.get("eventId")
-        if not event_id:
-            return default_error_response("Event ID is required"), 400
+        # Валидация события
+        event_doc = validate_event(event_id, db)  # Теперь возвращаем сам документ события
+        if isinstance(event_doc, dict):  # Если возвращен словарь с ошибкой
+            return event_doc  # Возвращаем ошибку, если событие не найдено
 
-        # Получаем документ с указанным eventId
-        event_ref = db.collection('events').document(event_id)
-        event_doc = event_ref.get()
+        event_data = event_doc.to_dict()  # Преобразуем документ в словарь
+        event_data["id"] = event_doc.id
 
-        if not event_doc.exists:
-            return default_error_response("Event not found"), 400
-
-        # Получаем данные события
-        event_data = event_doc.to_dict()
-        event_data["id"] = event_doc.id  # Добавляем id документа в данные события
-
-        # Получаем гостей, связанных с этим событием
         guest_ids = event_data.get("guests", [])
         guests = []
 
         for guest_id in guest_ids:
             guest_doc = db.collection("guests").document(guest_id).get()
             if guest_doc.exists:
-                guest_data = guest_doc.to_dict()
-                guest_data["id"] = guest_doc.id  # Добавляем id гостя
-                guests.append(guest_data)  # Добавляем полную информацию о госте
+                guest_data = guest_doc.to_dict()  # Преобразуем гостя в словарь
+                guest_data["id"] = guest_doc.id
+                guests.append(guest_data)
 
-        event_data["guests"] = guests
+        event_data["guests"] = sorted(guests, key=lambda g: g.get("created", ""), reverse=True)
 
-        # Возвращаем данные события
-        return jsonify(event_data), 200
+        return jsonify(event_data), 200  # Возвращаем правильный JSON ответ
 
     except Exception as e:
-        print("Ошибка при попытке получить event_by_id:", e)
         return default_error_response(str(e), 500)
 
 
-
+# Логика удаления события
 def delete_event(data, db):
     try:
-        # Получаем userId из контекста (декодированного токена)
         user_id = g.user.get("uid")
+        # Валидация пользователя
+        user_error = validate_user(user_id, db)
+        if user_error:
+            return user_error
 
-        if not user_id:
-            return default_error_response("User ID not found", 400)
+        # Валидация события
+        event_doc = validate_event(event_id, db)  # Теперь возвращаем сам документ события
+        if isinstance(event_doc, dict):  # Если возвращен словарь с ошибкой
+            return event_doc  # Возвращаем ошибку, если событие не найдено
 
-        # Проверяем, существует ли пользователь в коллекции users
-        user_doc = db.collection('users').document(user_id).get()
-        if not user_doc.exists:
-            return default_error_response("User not found in Firestore", 404)
+        event_data = event_doc.to_dict()  # Преобразуем документ в словарь
 
-        # Получаем событие по id
-        event_ref = db.collection('events').document(data['eventId'])
-        event_doc = event_ref.get()
+        # Валидация прав доступа
+        permission_error = validate_permission(user_id, event_doc, db)
+        if permission_error:
+            return permission_error
 
-        # Проверяем, существует ли событие с таким id и принадлежит ли оно пользователю
-        if not event_doc.exists:
-            return default_error_response("Event not found", 404)
-
-        event_data = event_doc.to_dict()
-        if event_data.get("userId") != user_id:
-            return default_error_response("You do not have permission to delete this event", 403)
-
-        # Удаляем всех гостей, у которых eventId совпадает с переданным
         guests_ref = db.collection('guests')
-        guests_query = guests_ref.where("eventId", "==", data['eventId'])  # Фильтруем гостей по eventId
+        guests_query = guests_ref.where("eventId", "==", data['eventId'])
         guests_docs = guests_query.stream()
 
         for guest in guests_docs:
             guest_ref = guests_ref.document(guest.id)
-            guest_ref.delete()  # Удаляем гостя
+            guest_ref.delete()
 
-        # Удаляем событие
+        event_ref = db.collection('events').document(data['eventId'])
         event_ref.delete()
 
-        # Возвращаем успешный ответ
         return default_response("Event deleted successfully", 200)
 
     except Exception as e:
-        print("Ошибка при попытке удалить event:", e)
         return default_error_response(str(e), 500)
 
 
+# Логика обновления события
 def update_event(data, db):
     try:
-        # Получаем userId из контекста (декодированного токена)
         user_id = g.user.get("uid")
+        # Валидация пользователя
+        user_error = validate_user(user_id, db)
+        if user_error:
+            return user_error
 
-        if not user_id:
-            return default_error_response("User ID not found", 400)
+        # Валидация события
+        event_doc = validate_event(event_id, db)  # Теперь возвращаем сам документ события
+        if isinstance(event_doc, dict):  # Если возвращен словарь с ошибкой
+            return event_doc  # Возвращаем ошибку, если событие не найдено
 
-        # Проверяем, существует ли пользователь в коллекции users
-        user_doc = db.collection('users').document(user_id).get()
-        if not user_doc.exists:
-            return default_error_response("User not found in Firestore", 404)
+        event_data = event_doc.to_dict()  # Преобразуем документ в словарь
 
-        # Извлекаем eventId из data
-        event_id = data.get("eventId")
-        if not event_id:
-            return default_error_response("Event ID is required", 400)
+        # Валидация прав доступа
+        permission_error = validate_permission(user_id, event_doc, db)
+        if permission_error:
+            return permission_error
 
-        # Проверяем, существует ли событие с указанным ID
-        event_doc_ref = db.collection('events').document(event_id)
-        event_doc = event_doc_ref.get()
-        if not event_doc.exists:
-            return default_error_response("Event not found", 404)
-
-        # Проверяем, что текущий пользователь имеет доступ к этому событию
-        if event_doc.to_dict().get("userId") != user_id:
-            return default_error_response("Access denied: You do not own this event", 403)
-
-        # Удаляем eventId из данных, чтобы не обновлять это поле
         data.pop("eventId", None)
-
-        # Добавляем обновленное время
         data['updated'] = datetime.utcnow()
+        event_data = EventUpdate(**data)
 
-        # Валидация данных с использованием модели Pydantic
-        event_data = EventUpdate(**data)  # Используйте EventUpdate для валидации обновляемых данных
-
-        # Обновляем документ в коллекции "events"
+        event_doc_ref = db.collection('events').document(data['eventId'])
         event_doc_ref.update(event_data.dict(exclude_unset=True))
 
-        # Возвращаем успешный ответ
         return default_response({"message": "Event updated successfully"}, 200)
 
     except ValidationError as e:
-        print("Ошибка валидации при попытке обновить event:", e)
         return validation_error_response(str(e.errors()), 400)
 
     except Exception as e:
-        print("Ошибка при попытке обновить event:", e)
         return default_error_response(str(e), 500)
 
 
-def get_event_designs(data, db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
-    try:
-        # Получаем всех пользователей из Firebase Authentication
-        designs = []
-              
-         # Получаем все документы из коллекции "events"
-        designs_ref = db.collection('designs')  # Замените 'events' на название вашей коллекции
-        design_docs = designs_ref.stream()
-        
-         # Проходим по всем документам и добавляем их в список
-        for doc in design_docs:
-            desig_data = doc.to_dict()  # Получаем данные документа как словарь
-            desig_data["id"] = doc.id  # Добавляем id документа в данные ивента
-            designs.append(desig_data)  # Добавляем данные ивента в список
 
-        # Возвращаем список пользователей как JSON
+# Логика получения дизайнов
+def get_event_designs(data, db):
+    try:
+        designs = []
+        designs_ref = db.collection('designs')
+        design_docs = designs_ref.stream()
+
+        for doc in design_docs:
+            desig_data = doc.to_dict()
+            desig_data["id"] = doc.id
+            designs.append(desig_data)
+
         return jsonify(designs), 200
 
     except Exception as e:
-        print("Ошибка при попытке получить designs:", e)
         return default_error_response(str(e), 500)
 
-   
+def update_todo(data, db):
+    try:
+        user_id = g.user.get("uid")
+
+        # Валидация события
+        event_doc = db.collection('events').document(data['eventId']).get()
+        if not event_doc.exists:
+            return default_error_response("Event not found", 404)
+
+        # Валидация прав доступа
+        permission_error = validate_permission(user_id, event_doc, db)
+        if permission_error:
+            return permission_error
+
+        # Валидация входящего списка todo с Pydantic
+        todo_list = [Todo(**todo).dict() for todo in data['todoList']]
+
+        # Обновление списка todo в событии
+        db.collection('events').document(data['eventId']).update({
+            'todoList': todo_list
+        })
+
+        return default_response({"message": "Todo list updated successfully", "todoList": todo_list}, 200)
+
+    except ValidationError as e:
+        return validation_error_response(str(e.errors()), 400)
+
+    except Exception as e:
+        return default_error_response(str(e), 500)
