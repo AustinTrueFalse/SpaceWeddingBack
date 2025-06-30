@@ -1,6 +1,6 @@
 # Event Management Backend
 
-**IN DEVELOPMENT NOW!!!**
+**🚧 IN DEVELOPMENT NOW!!!**
 
 A modern backend service designed to support a web application for creating, inviting, and tracking events.  
 This backend is built on Python and integrates with Firebase for authentication, user management, and data storage.
