@@ -2,6 +2,7 @@ from pydantic import BaseModel, constr
 from datetime import datetime
 from typing import Optional, List
 from models.drink import Drink
+from models.tag import Tag
 
 
 class GuestCreate(BaseModel):
@@ -10,7 +11,9 @@ class GuestCreate(BaseModel):
     guestName: str
     guestPhone: str
     guestStatus: str
-    guestDrinks: List[str] = []
+    guestDrinks: List[Drink] = []
+    guestTag: Tag
+    guestDescr: str
 
 # Модель для события с дополнительным полем `id`
 class Guest(GuestCreate):
@@ -20,7 +23,9 @@ class GuestUpdate(BaseModel):
     guestName: Optional[str]
     guestPhone: Optional[str]
     guestStatus: Optional[str]
-    guestDrinks: Optional[List[str]] = []
+    guestDrinks: Optional[List[Drink]] = []
+    guestTag: Optional[Tag]
+    guestDescr: Optional[str]
     updated: Optional[datetime] = datetime.utcnow  # Дата последнего обновления, по умолчанию текущая дата
 
     class Config:

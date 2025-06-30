@@ -128,7 +128,9 @@ def register(data):
         # Подготовка данных для Firestore
         user_data = {
             "email": email,
-            "username": username
+            "username": username,
+            "email_lower": email.lower(),
+            "username_lower": username.lower()
         }
 
         email_verify(id_token)
@@ -289,6 +291,78 @@ def confirm():
     except Exception as e:
         print("Ошибка обновления токенов:", str(e))
         return default_error_response(str(e), 500)
+
+
+def send_email_password_reset():
+    data = request.get_json()
+    email = data.get('email')
+
+    if not email:
+        return firebase_error_response("Missing email", 400)
+
+    try:
+        # Проверяем существует ли email в коллекции users
+        db = firestore.client()
+        users_ref = db.collection('users')
+        query = users_ref.where('email', '==', email).limit(1).stream()
+
+        user_exists = False
+        for _ in query:
+            user_exists = True
+            break
+
+        if not user_exists:
+            print("Email не найден в коллекции users:", email)
+            return firebase_error_response("Email not found", 404)
+
+        # Отправляем запрос на сброс пароля в Firebase
+        reset_response = requests.post(
+            f'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={FIREBASE_API_KEY}',
+            json={
+                "requestType": "PASSWORD_RESET",
+                "email": email
+            }
+        )
+
+        if reset_response.status_code != 200:
+            print("Ошибка отправки письма:", reset_response.json())
+            return firebase_error_response("Failed to send password reset email", 400)
+
+        print("Письмо для сброса пароля отправлено на:", email)
+        return jsonify({"message": "Password reset email sent."}), 200
+
+    except Exception as e:
+        print("Ошибка при отправке письма:", str(e))
+        return default_error_response(str(e), 500)
+
+
+def reset_password():
+    data = request.get_json()
+    oob_code = data.get('oobCode')
+    new_password = data.get('newPassword')
+
+    if not oob_code or not new_password:
+        return make_response(jsonify({"error": "Missing oobCode or newPassword"}), 400)
+
+    try:
+        reset_response = requests.post(
+            f'https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key={FIREBASE_API_KEY}',
+            json={
+                "oobCode": oob_code,
+                "newPassword": new_password
+            }
+        )
+
+        if reset_response.status_code != 200:
+            print("Ошибка сброса пароля:", reset_response.json())
+            return make_response(jsonify({"error": "Failed to reset password"}), 400)
+
+        print("Пароль успешно сброшен.")
+        return make_response(jsonify({"message": "Password reset successful!"}), 200)
+
+    except Exception as e:
+        print("Ошибка сброса пароля:", str(e))
+        return make_response(jsonify({"error": str(e)}), 500)
 
 
 def verify_token(data):

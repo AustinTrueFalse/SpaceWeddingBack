@@ -4,6 +4,8 @@ from pydantic import BaseModel, constr
 class UserCreate(BaseModel):
     email: str
     username: str
+    email_lower: str
+    username_lower: str
 
 # Модель для события с дополнительным полем `id`
 class User(UserCreate):

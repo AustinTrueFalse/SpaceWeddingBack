@@ -76,6 +76,8 @@ def add_guest(data, db):
         # Добавляем текущую дату и время для created
         data['created'] = datetime.utcnow()
 
+        event_id = data["eventId"]
+
         # Валидация события
         event_doc = validate_event(event_id, db)  # Теперь возвращаем сам документ события
         if isinstance(event_doc, dict):  # Если возвращен словарь с ошибкой
@@ -185,6 +187,93 @@ def update_guest(data, db):
         return default_error_response(str(e), 500)
 
 
+def update_guest_list(data, db):
+    try:
+        # Получаем userId из контекста (декодированного токена)
+        user_id = g.user.get("uid")
+
+        if not user_id:
+            return default_error_response("User ID not found", 400)
+
+        # Валидация пользователя
+        user_error = validate_user(user_id, db)
+        if user_error:
+            return user_error
+
+        updated_guests = []
+        errors = []
+
+        # Проверяем, что в data есть ключ 'guests', который является списком
+        guests = data.get("guests")
+        if not isinstance(guests, list):
+            return default_error_response("Guests must be a list", 400)
+
+        # Обрабатываем каждый объект гостя в массиве
+        for guest_data in guests:
+            guest_id = guest_data.get("id")
+            if not guest_id:
+                errors.append(f"Guest ID is required for guest: {guest_data}")
+                continue
+
+            # Проверка существования гостя
+            guest_doc_ref = db.collection('guests').document(guest_id)
+            guest_doc = guest_doc_ref.get()
+            if not guest_doc.exists:
+                errors.append(f"Guest with ID {guest_id} not found.")
+                continue
+
+            guest_data_from_db = guest_doc.to_dict()
+            event_id = guest_data_from_db.get("eventId")
+
+            if not event_id:
+                errors.append(f"Guest {guest_id} is not associated with any event.")
+                continue
+
+            # Валидация события
+            event_doc = validate_event(event_id, db)
+            if isinstance(event_doc, dict):  # Если событие не найдено
+                errors.append(f"Event for guest {guest_id} not found.")
+                continue
+
+            event_data = event_doc.to_dict()
+
+            # Валидация разрешений пользователя для события
+            permission_error = validate_permission(user_id, event_doc, db)
+            if permission_error:
+                errors.append(f"Permission error for guest {guest_id}.")
+                continue
+
+            # Удаляем guestId из данных, чтобы не обновлять это поле
+            guest_data.pop("guestId", None)
+
+            # Добавляем обновленное время
+            guest_data['updated'] = datetime.utcnow()
+
+            # Валидация данных с использованием модели Pydantic
+            try:
+                guest_update_data = GuestUpdate(**guest_data)
+            except ValidationError as e:
+                errors.append(f"Validation error for guest {guest_id}: {str(e.errors())}")
+                continue
+
+            # Обновляем документ в коллекции "guests"
+            guest_doc_ref.update(guest_update_data.dict(exclude_unset=True))
+            updated_guests.append(guest_id)
+
+        # Если есть ошибки, возвращаем их
+        if errors:
+            return default_error_response({"errors": errors}, 400)
+
+        # Возвращаем успешный ответ
+        return default_response(
+            {"message": f"{len(updated_guests)} guests updated successfully", "updated_guests": updated_guests},
+            200
+        )
+
+    except Exception as e:
+        return default_error_response(str(e), 500)
+
+
 def delete_guest(data, db):
     try:
         guest_id = data.get("guestId")
@@ -260,8 +349,7 @@ def get_guests(data, db):
             guest_data = doc.to_dict()  # Получаем данные документа как словарь
             guest_data["id"] = doc.id  # Добавляем id документа в данные гостя
 
-            # Оставляем только массив строковых ID напитков
-            guest_data["guestDrinks"] = [str(drink_id) for drink_id in guest_data.get("guestDrinks", [])]
+           
 
             guests.append(guest_data)  # Добавляем данные гостя в список
 
@@ -276,7 +364,7 @@ def get_guests(data, db):
 
 def get_drinks(data, db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
     try:
-        # Получаем всех пользователей из Firebase Authentication
+
         drinks = []
               
          # Получаем все документы из коллекции "drinks"
@@ -294,6 +382,29 @@ def get_drinks(data, db):  # data, db параметры можно остави
 
     except Exception as e:
         print("Ошибка при попытке получить drinks:", e)
+        return default_error_response(str(e), 500)
+
+
+def get_tags(data, db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
+    try:
+
+        tags = []
+              
+         # Получаем все документы из коллекции "tags"
+        tags_ref = db.collection('tags')  # Замените 'events' на название вашей коллекции
+        docs = tags_ref.stream()
+        
+         # Проходим по всем документам и добавляем их в список
+        for doc in docs:
+            tag_data = doc.to_dict()  # Получаем данные документа как словарь
+            tag_data["id"] = doc.id  # Добавляем id документа в данные ивента
+            tags.append(tag_data)  # Добавляем данные ивента в список
+
+        # Возвращаем список пользователей как JSON
+        return jsonify(tags), 200
+
+    except Exception as e:
+        print("Ошибка при попытке получить tags:", e)
         return default_error_response(str(e), 500)
 
 

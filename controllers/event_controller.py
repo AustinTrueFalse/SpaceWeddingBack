@@ -23,6 +23,8 @@ def add_event(data, db):
             "id": user_id,
             "username": user_data.get("username"),
             "email": user_data.get("email"),
+            "username_lower": user_data.get("username").lower(),
+            "email_lower": user_data.get("email").lower(),
         }]
         data['allowedUsers'] = allowed_users
         data['created'] = datetime.utcnow()
@@ -79,6 +81,13 @@ def get_events(data, db):
 
 def get_event_by_id(data, db):
     try:
+        user_id = g.user.get("uid")
+        # Валидация пользователя
+        user_error = validate_user(user_id, db)
+        if user_error:
+            return user_error
+
+
         event_id = data.get("eventId")
         # Валидация события
         event_doc = validate_event(event_id, db)  # Теперь возвращаем сам документ события
@@ -87,6 +96,52 @@ def get_event_by_id(data, db):
 
         event_data = event_doc.to_dict()  # Преобразуем документ в словарь
         event_data["id"] = event_doc.id
+
+         # Валидация прав доступа
+        permission_error = validate_permission(user_id, event_doc, db)
+        if permission_error:
+            return permission_error
+
+        guest_ids = event_data.get("guests", [])
+        guests = []
+
+        for guest_id in guest_ids:
+            guest_doc = db.collection("guests").document(guest_id).get()
+            if guest_doc.exists:
+                guest_data = guest_doc.to_dict()  # Преобразуем гостя в словарь
+                guest_data["id"] = guest_doc.id
+                guests.append(guest_data)
+
+        event_data["guests"] = sorted(guests, key=lambda g: g.get("created", ""), reverse=True)
+
+        return jsonify(event_data), 200  # Возвращаем правильный JSON ответ
+
+    except Exception as e:
+        return default_error_response(str(e), 500)
+
+
+def get_event_by_id(data, db):
+    try:
+        user_id = g.user.get("uid")
+        # Валидация пользователя
+        user_error = validate_user(user_id, db)
+        if user_error:
+            return user_error
+
+
+        event_id = data.get("eventId")
+        # Валидация события
+        event_doc = validate_event(event_id, db)  # Теперь возвращаем сам документ события
+        if isinstance(event_doc, dict):  # Если возвращен словарь с ошибкой
+            return event_doc  # Возвращаем ошибку, если событие не найдено
+
+        event_data = event_doc.to_dict()  # Преобразуем документ в словарь
+        event_data["id"] = event_doc.id
+
+         # Валидация прав доступа
+        permission_error = validate_permission(user_id, event_doc, db)
+        if permission_error:
+            return permission_error
 
         guest_ids = event_data.get("guests", [])
         guests = []
@@ -153,6 +208,8 @@ def update_event(data, db):
         if user_error:
             return user_error
 
+        event_id = data.get("eventId")
+
         # Валидация события
         event_doc = validate_event(event_id, db)  # Теперь возвращаем сам документ события
         if isinstance(event_doc, dict):  # Если возвращен словарь с ошибкой
@@ -165,7 +222,6 @@ def update_event(data, db):
         if permission_error:
             return permission_error
 
-        data.pop("eventId", None)
         data['updated'] = datetime.utcnow()
         event_data = EventUpdate(**data)
 
@@ -222,6 +278,69 @@ def update_todo(data, db):
         })
 
         return default_response({"message": "Todo list updated successfully", "todoList": todo_list}, 200)
+
+    except ValidationError as e:
+        return validation_error_response(str(e.errors()), 400)
+
+    except Exception as e:
+        return default_error_response(str(e), 500)
+
+
+# Добавление нового юзера в allowedUsers
+def add_allowed_user(data, db):
+    try:
+        user_id = g.user.get("uid")
+
+        # Валидация пользователя
+        user_error = validate_user(user_id, db)
+        if user_error:
+            return user_error
+
+        event_id = data.get("eventId")
+        adding_user_id = data.get("adding_user_id")
+
+        if not event_id or not adding_user_id:
+            return validation_error_response("Missing eventId or adding_user_id", 400)
+
+        # Валидация события
+        event_doc = validate_event(event_id, db)
+        if isinstance(event_doc, dict):  # Ошибка
+            return event_doc
+
+        # Валидация прав
+        permission_error = validate_permission(user_id, event_doc, db)
+        if permission_error:
+            return permission_error
+
+        event_data = event_doc.to_dict()
+
+        # Проверка, есть ли уже такой пользователь в allowedUsers
+        current_allowed_users = event_data.get("allowedUsers", [])
+        if any(user.get("id") == adding_user_id for user in current_allowed_users):
+            return default_response({"message": "User is already allowed"}, 200)
+
+        # Получение данных нового пользователя
+        new_user_doc = db.collection("users").document(adding_user_id).get()
+        if not new_user_doc.exists:
+            return validation_error_response("User to add not found", 404)
+
+        new_user_data = new_user_doc.to_dict()
+        # Можно уточнить какие поля вы хотите добавлять в allowedUsers
+        new_user = {
+            "id": adding_user_id,
+            "email": new_user_data.get("email", ""),
+            "username": new_user_data.get("username", ""),
+        }
+
+        current_allowed_users.append(new_user)
+
+        # Обновляем только поле allowedUsers
+        event_doc.reference.update({
+            "allowedUsers": current_allowed_users,
+            "updated": datetime.utcnow()
+        })
+
+        return default_response({"message": "User added to allowedUsers"}, 200)
 
     except ValidationError as e:
         return validation_error_response(str(e.errors()), 400)

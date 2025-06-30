@@ -4,10 +4,12 @@ from typing import Optional, List
 from models.guest import Guest
 from models.user import User
 from models.drink import Drink
+from models.tag import Tag
 from models.timing import Timing
 from models.visit_sts import VisitSts
 from models.couple import Couple
 from models.todo import Todo
+from models.invite import Invite
 
 
 # Модель для создания события, без поля `id`, которое будет генерироваться после добавления в базу данных
@@ -19,6 +21,7 @@ class EventCreate(BaseModel):
     eventDesignId: str
     eventLocation: str
     eventDrinks: List[Drink] = []
+    eventTags: List[Tag] = []
     eventTiming: List[Timing] = []
     eventCouple: Couple
     guestStatuses: List[VisitSts] = []
@@ -27,6 +30,7 @@ class EventCreate(BaseModel):
     guests: List[str] = []
     todoList: List[Todo] = []
     allowedUsers: List[User] = []
+    eventInvite: Invite
 
 # Модель для события с дополнительным полем `id`
 class Event(EventCreate):
@@ -39,9 +43,11 @@ class EventUpdate(BaseModel):
     eventDesignId: Optional[str]
     eventLocation: Optional[str]
     eventDrinks: Optional[List[Drink]] = []
+    eventTags: Optional[List[Tag]] = []
     eventTiming: Optional[List[Timing]] = []
     eventCouple: Optional[Couple]
     guestStatuses: Optional[List[VisitSts]] = []
+    eventInvite: Optional[Invite]
     # guests: Optional[List[str]] = []
     # allowedUsers: Optional[List[User]] = []
     updated: Optional[datetime] = datetime.utcnow  # Дата последнего обновления, по умолчанию текущая дата

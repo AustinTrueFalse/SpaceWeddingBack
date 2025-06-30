@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from .auth_controller import sign_in_cookie, sign_in, sign_out, register, check_username, verify_token, confirm, resend_email_verify
+from .auth_controller import sign_in_cookie, sign_in, sign_out, register, check_username, verify_token, confirm, send_email_password_reset, reset_password, resend_email_verify
 
 auth_routes = Blueprint('auth', __name__)
 
@@ -22,6 +22,14 @@ def register_route():
 @auth_routes.route('/auth/confirm', methods=['POST'])
 def confirm_route():
     return confirm()
+
+@auth_routes.route('/auth/send_email_password_reset', methods=['POST'])
+def send_email_password_reset_route():
+    return send_email_password_reset()
+
+@auth_routes.route('/auth/reset_password', methods=['POST'])
+def password_reset_email_route():
+    return reset_password()
 
 @auth_routes.route('/auth/resend_email_verify', methods=['POST'])
 def resend_email_verify_route():
