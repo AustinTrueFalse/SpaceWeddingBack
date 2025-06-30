@@ -42,6 +42,77 @@ def sign_in_cookie():
         print("Ошибка при авторизации через cookie", e)
         default_error_response(str(e), 500)
 
+def sign_in_with_google():
+    try:
+        data = request.get_json()
+        id_token = data.get("idToken")
+        refresh_token = data.get("refreshToken")
+
+        if not id_token or not refresh_token:
+            return firebase_error_response("Missing idToken or refreshToken", 400)
+
+        decoded_token = auth.verify_id_token(id_token)
+        user_id = decoded_token['uid']
+        email_verified = decoded_token.get("email_verified", False)
+        email = decoded_token.get("email")
+
+        if not email:
+            return firebase_error_response("Missing email in token", 400)
+
+        db = current_app.db
+
+        existing_user = db.collection('users').document(user_id).get()
+        if not existing_user.exists:
+            username = email.split('@')[0]
+            username_check = check_username({"username": username})
+            if not username_check['available']:
+                username += user_id[:6]
+
+            user_data = {
+                "email": email,
+                "username": username,
+                "email_lower": email.lower(),
+                "username_lower": username.lower()
+            }
+
+            add_user_result = add_user(user_data, db, user_id)
+            if add_user_result[1] != 201:
+                remove_user_from_firebase(id_token)
+                return add_user_result
+
+        # Создаем ответ и безопасные куки
+        resp = make_response(jsonify({
+            "user": user_id,
+            "is_account_confirmed": email_verified
+        }), 200)
+
+        # Устанавливаем HttpOnly куки
+        resp.set_cookie(
+            'firebase_token',
+            id_token,
+            httponly=True,
+            secure=False,  # включи HTTPS
+            samesite='Lax',
+            max_age=60 * 60  # 1 час
+        )
+        resp.set_cookie(
+            'refresh_token',
+            refresh_token,
+            httponly=True,
+            secure=False,
+            samesite='Lax',
+            max_age=60 * 60 * 24 * 30  # 30 дней
+        )
+
+        return resp
+
+    except Exception as e:
+        print("Google sign-in error:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+
+
 def sign_in(data):
     email = data['email']
     password = data['password']

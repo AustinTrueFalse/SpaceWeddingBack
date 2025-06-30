@@ -1,7 +1,11 @@
 from flask import Blueprint, request, jsonify
-from .auth_controller import sign_in_cookie, sign_in, sign_out, register, check_username, verify_token, confirm, send_email_password_reset, reset_password, resend_email_verify
+from .auth_controller import sign_in_with_google, sign_in_cookie, sign_in, sign_out, register, check_username, verify_token, confirm, send_email_password_reset, reset_password, resend_email_verify
 
 auth_routes = Blueprint('auth', __name__)
+
+@auth_routes.route("/auth/google", methods=["POST"])
+def sign_in_with_google_route():
+    return sign_in_with_google()
 
 @auth_routes.route('/auth/signin_cookie', methods=['POST'])
 def sign_in_cookie_route():
