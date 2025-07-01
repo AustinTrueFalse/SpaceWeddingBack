@@ -14,6 +14,50 @@ logging.basicConfig(level=logging.DEBUG)
 # Получаем ключ API из переменных окружения
 FIREBASE_API_KEY = os.getenv('FIREBASE_API_KEY')
 
+def check_user():
+    id_token = request.cookies.get('firebase_token')
+
+    if not id_token:
+        return jsonify({"error": "Missing id_token"}), 401
+
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        user_id = decoded_token['uid']
+        email_verified = decoded_token.get("email_verified", False)
+
+        # Получаем username из базы данных
+        db = current_app.db
+        user_doc = db.collection('users').document(user_id).get()
+        username = user_doc.get('username') if user_doc.exists else None
+
+        # Возвращаем тот же формат, что и sign_in_cookie
+        return jsonify({
+            "user": user_id,
+            "username": username,
+            "is_account_confirmed": email_verified
+        }), 200
+
+    except auth.ExpiredIdTokenError:
+        # Токен устарел, фронтенд должен вызвать signInCookie()
+        return jsonify({
+            "error": "Token expired",
+            "code": "TOKEN_EXPIRED"
+        }), 401
+
+    except auth.InvalidIdTokenError:
+        # Невалидный токен, фронтенд должен разлогинить
+        return jsonify({
+            "error": "Invalid token",
+            "code": "INVALID_TOKEN"
+        }), 401
+
+    except Exception as e:
+        print(f"Ошибка при проверке пользователя: {e}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
+
 def sign_in_cookie():
     id_token = request.cookies.get('firebase_token')
 
@@ -30,9 +74,18 @@ def sign_in_cookie():
         # Получаем uid из токена
         user_id = decoded_token['uid']
         email_verified = decoded_token.get("email_verified", False)
+
+         # Получаем username из базы данных
+        db = current_app.db
+        user_doc = db.collection('users').document(user_id).get()
+        username = user_doc.get('username') if user_doc.exists else None
             
-        # Возвращаем email
-        resp = make_response(jsonify({"user": user_id, "is_account_confirmed": email_verified}), 200)
+        # Возвращаем ail
+        resp = make_response(jsonify({
+            "user": user_id,
+            "username": username,
+            "is_account_confirmed": email_verified
+        }), 200)
         
         
         return resp
@@ -62,6 +115,7 @@ def sign_in_with_google():
         db = current_app.db
 
         existing_user = db.collection('users').document(user_id).get()
+        username = None
         if not existing_user.exists:
             username = email.split('@')[0]
             username_check = check_username({"username": username})
@@ -79,10 +133,13 @@ def sign_in_with_google():
             if add_user_result[1] != 201:
                 remove_user_from_firebase(id_token)
                 return add_user_result
+        else:
+            username = existing_user.get('username')
 
         # Создаем ответ и безопасные куки
         resp = make_response(jsonify({
             "user": user_id,
+            "username": username,
             "is_account_confirmed": email_verified
         }), 200)
 
@@ -138,11 +195,15 @@ def sign_in(data):
         email_verified = decoded_token.get("email_verified", False)
         user_id = decoded_token['uid']
         
-        
+        # Получаем username из базы данных
+        db = current_app.db
+        user_doc = db.collection('users').document(user_id).get()
+        username = user_doc.get('username') if user_doc.exists else None
 
         # Формируем ответ с куками
         resp = make_response(jsonify({
             "user": user_id,
+            "username": username,
             "is_account_confirmed": email_verified
         }), 200)
         resp.set_cookie('firebase_token', id_token, httponly=True, samesite='Lax', secure=False)
@@ -254,6 +315,46 @@ def check_username(data):
 
     except Exception as e:
         print(f"Ошибка проверки username: {e}")
+        return default_error_response(str(e), 500)
+
+def update_username(data):
+    user_id = data['userId']
+    new_username = data['username']
+    db = current_app.db
+
+    if not user_id or not new_username:
+        return default_error_response("Не передан user_id или username", 400)
+    
+    try:
+        # 1. Получаем текущего пользователя
+        user_ref = db.collection('users').document(user_id)
+        current_user = user_ref.get()
+        
+        if not current_user.exists:
+            return default_error_response("Пользователь не найден", 404)
+            
+        current_data = current_user.to_dict()
+        current_username = current_data.get('username')
+        
+        # 2. Если имя не изменилось, просто возвращаем успех
+        if current_username == new_username:
+            return {"success": True, "message": "Username не изменен"}
+        
+        # 3. Проверяем, занято ли новое имя другим пользователем
+        users_ref = db.collection('users')
+        query = users_ref.where('username', '==', new_username).limit(1).stream()
+        
+        for user in query:
+            if user.id != user_id:  # Если нашли другого пользователя с таким именем
+                return {"available": False, "message": "Username уже занят"}
+        
+        # 4. Обновляем username
+        user_ref.update({'username': new_username})
+        
+        return {"success": True, "available": True, "message": "Username успешно изменен"}
+        
+    except Exception as e:
+        print(f"Ошибка при изменении username: {e}")
         return default_error_response(str(e), 500)
 
 

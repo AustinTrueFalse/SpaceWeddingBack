@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from .auth_controller import sign_in_with_google, sign_in_cookie, sign_in, sign_out, register, check_username, verify_token, confirm, send_email_password_reset, reset_password, resend_email_verify
+from .auth_controller import sign_in_with_google, check_user, sign_in_cookie, sign_in, sign_out, register, check_username, verify_token, confirm, send_email_password_reset, update_username, reset_password, resend_email_verify
 
 auth_routes = Blueprint('auth', __name__)
 
@@ -10,6 +10,10 @@ def sign_in_with_google_route():
 @auth_routes.route('/auth/signin_cookie', methods=['POST'])
 def sign_in_cookie_route():
     return sign_in_cookie()
+
+@auth_routes.route('/auth/check_user', methods=['POST'])
+def check_user_route():
+    return check_user()
 
 @auth_routes.route('/auth/signin', methods=['POST'])
 def sign_in_route():
@@ -42,6 +46,10 @@ def resend_email_verify_route():
 @auth_routes.route('/auth/check_username', methods=['POST'])
 def check_username_route():
     return check_username(request.json)
+
+@auth_routes.route('/auth/update_username', methods=['POST'])
+def update_username_route():
+    return update_username(request.json)
 
 @auth_routes.route('/verify-token', methods=['POST'])
 def verify_token_route():
