@@ -362,7 +362,7 @@ def get_guests(data, db):
         return default_error_response(str(e), 500)
 
 
-def get_drinks(data, db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
+def get_drinks(db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
     try:
 
         drinks = []
@@ -385,7 +385,7 @@ def get_drinks(data, db):  # data, db параметры можно остави
         return default_error_response(str(e), 500)
 
 
-def get_tags(data, db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
+def get_tags(db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
     try:
 
         tags = []
@@ -408,7 +408,7 @@ def get_tags(data, db):  # data, db параметры можно оставит
         return default_error_response(str(e), 500)
 
 
-def get_visit_sts(data, db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
+def get_visit_sts(db):  # data, db параметры можно оставить для дальнейшей логики, если нужно
     try:
         # Получаем всех пользователей из Firebase Authentication
         visit_sts = []

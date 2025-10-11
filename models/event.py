@@ -30,6 +30,7 @@ class EventCreate(BaseModel):
     guests: List[str] = []
     todoList: List[Todo] = []
     allowedUsers: List[User] = []
+    playlistLink: str
     eventInvite: Invite
 
 # Модель для события с дополнительным полем `id`
@@ -47,6 +48,7 @@ class EventUpdate(BaseModel):
     eventTiming: Optional[List[Timing]] = []
     eventCouple: Optional[Couple]
     guestStatuses: Optional[List[VisitSts]] = []
+    playlistLink: str
     eventInvite: Optional[Invite]
     # guests: Optional[List[str]] = []
     # allowedUsers: Optional[List[User]] = []

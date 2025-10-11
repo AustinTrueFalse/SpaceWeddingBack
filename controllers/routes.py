@@ -54,21 +54,21 @@ def get_guests_route():
 @authenticate_request
 def get_drinks_route():
     db = current_app.db  # Получаем объект db из текущего приложения
-    return get_drinks(request.json, db)  # Передаем request.json как аргумент
+    return get_drinks(db)  # Передаем request.json как аргумент
 
 # Маршрут для получения словаря тэгов
 @guest_routes.route('/api/guests/tags', methods=['POST'])
 @authenticate_request
 def get_tags_route():
     db = current_app.db  # Получаем объект db из текущего приложения
-    return get_tags(request.json, db)  # Передаем request.json как аргумент
+    return get_tags(db)  # Передаем request.json как аргумент
 
 
 @guest_routes.route('/api/guests/visit_sts', methods=['POST'])
 @authenticate_request
 def get_visit_sts_route():
     db = current_app.db  # Получаем объект db из текущего приложения
-    return get_visit_sts(request.json, db)  # Передаем request.json как аргумент
+    return get_visit_sts(db)  # Передаем request.json как аргумент
 
 # Маршрут для добавления event
 @event_routes.route('/api/events/add', methods=['POST'])
@@ -92,7 +92,7 @@ def update_todo_route():
 @authenticate_request
 def get_events_route():
     db = current_app.db  # Получаем объект db из текущего приложения
-    return get_events(request.json, db)  # Передаем request.json как аргумент
+    return get_events(db)  # Передаем request.json как аргумент
 
 # Маршрут для получения event по id
 @event_routes.route('/api/events/id', methods=['POST'])
@@ -120,7 +120,7 @@ def update_event_route():
 @authenticate_request
 def get_event_designs_route():
     db = current_app.db  # Получаем объект db из текущего приложения
-    return get_event_designs(request.json, db)  # Передаем request.json как аргумент
+    return get_event_designs(db)  # Передаем request.json как аргумент
 
 # Маршрут для добавление нового пользователя в событие
 @event_routes.route('/api/users/add_allowed_user', methods=['POST'])

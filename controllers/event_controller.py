@@ -41,7 +41,7 @@ def add_event(data, db):
         return default_error_response(str(e), 500)
 
 # Основная логика получения событий
-def get_events(data, db):
+def get_events(db):
     try:
         user_id = g.user.get("uid")
         # Валидация пользователя
@@ -239,7 +239,7 @@ def update_event(data, db):
 
 
 # Логика получения дизайнов
-def get_event_designs(data, db):
+def get_event_designs(db):
     try:
         designs = []
         designs_ref = db.collection('designs')
