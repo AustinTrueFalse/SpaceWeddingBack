@@ -61,3 +61,17 @@ def validate_guest_phone(event_data, guest_phone, db):
                 return default_error_response("Guest with this phone number already exists in the event", 400)
     
     return None
+
+def validate_playlist(playlist_id, db):
+    """
+    Валидация существования плейлиста
+    Возвращает документ плейлиста или ошибку
+    """
+    if not playlist_id:
+        return default_error_response("Playlist ID is required", 400)
+    
+    playlist_doc = db.collection('playlists').document(playlist_id).get()
+    if not playlist_doc.exists:
+        return default_error_response("Playlist not found", 404)
+    
+    return playlist_doc

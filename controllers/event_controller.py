@@ -120,47 +120,6 @@ def get_event_by_id(data, db):
         return default_error_response(str(e), 500)
 
 
-def get_event_by_id(data, db):
-    try:
-        user_id = g.user.get("uid")
-        # Валидация пользователя
-        user_error = validate_user(user_id, db)
-        if user_error:
-            return user_error
-
-
-        event_id = data.get("eventId")
-        # Валидация события
-        event_doc = validate_event(event_id, db)  # Теперь возвращаем сам документ события
-        if isinstance(event_doc, dict):  # Если возвращен словарь с ошибкой
-            return event_doc  # Возвращаем ошибку, если событие не найдено
-
-        event_data = event_doc.to_dict()  # Преобразуем документ в словарь
-        event_data["id"] = event_doc.id
-
-         # Валидация прав доступа
-        permission_error = validate_permission(user_id, event_doc, db)
-        if permission_error:
-            return permission_error
-
-        guest_ids = event_data.get("guests", [])
-        guests = []
-
-        for guest_id in guest_ids:
-            guest_doc = db.collection("guests").document(guest_id).get()
-            if guest_doc.exists:
-                guest_data = guest_doc.to_dict()  # Преобразуем гостя в словарь
-                guest_data["id"] = guest_doc.id
-                guests.append(guest_data)
-
-        event_data["guests"] = sorted(guests, key=lambda g: g.get("created", ""), reverse=True)
-
-        return jsonify(event_data), 200  # Возвращаем правильный JSON ответ
-
-    except Exception as e:
-        return default_error_response(str(e), 500)
-
-
 # Логика удаления события
 def delete_event(data, db):
     try:

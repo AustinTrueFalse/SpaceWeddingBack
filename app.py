@@ -5,6 +5,8 @@ from flask_cors import CORS
 from auth.routes import auth_routes
 from controllers.routes import guest_routes
 from controllers.routes import event_routes
+from controllers.routes import music_routes
+from controllers.routes import playlist_routes
 from dotenv import load_dotenv
 import os
 
@@ -31,6 +33,8 @@ app.db = db
 app.register_blueprint(auth_routes)
 app.register_blueprint(guest_routes)
 app.register_blueprint(event_routes)
+app.register_blueprint(music_routes)
+app.register_blueprint(playlist_routes)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
